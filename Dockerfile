@@ -1,5 +1,3 @@
-ARG CACHE_BUST=1
-
 #Base limpa com ComfyUI + comfy-cli + Manager
 FROM runpod/worker-comfyui:5.5.1-base
 
@@ -44,7 +42,7 @@ RUN git clone https://github.com/kijai/ComfyUI-KJNodes.git && \
 RUN git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
     cd ComfyUI-Frame-Interpolation && \
     python install.py
-
+    cd ..
 
 # Baixa models com URLs corretas (resolve/main + ?download=true para forçar binário)
 RUN mkdir -p /comfyui/models/checkpoints && \
@@ -59,27 +57,3 @@ RUN mkdir -p /comfyui/models/upscale_models && \
     wget -c -O /comfyui/models/upscale_models/rife49.pth \
     "https://huggingface.co/hfmaster/models-moved/resolve/main/rife/rife49.pth?download=true"
 
-# Opcional: Se quiser usar comfy-cli para models extras (mas wget é mais confiável aqui)
-# RUN comfy model download --url "https://huggingface.co/Phr00t/.../resolve/main/..." --relative-path models/checkpoints --filename wan2.2-i2v-rapid-aio-v10-nsfw.safetensors
-
-# Refresh cache do ComfyUI (boa prática após installs)  # ou apenas restart no handler
-
-# O handler da base já cuida do resto (não precisa CMD extra)
-RUN echo "================ DEBUG 1: CUSTOM NODES TREE ================" && \
-    ls -R /comfyui/custom_nodes && \
-    echo "============================================================="
-
-RUN echo "================ DEBUG 2: FIND CKPTS / RIFE ================" && \
-    find /comfyui -type d -iname "*ckpt*" && \
-    find /comfyui -type d -iname "*rife*" && \
-    echo "============================================================="
-
-RUN echo "================ DEBUG 3: FIND RIFE49 FILE ==================" && \
-    find /comfyui -name "rife49.pth" -exec ls -lh {} \; && \
-    echo "============================================================="
-
-RUN echo "================ DEBUG 4: GREP MODEL PATH ===================" && \
-    grep -R "folder_paths" -n /comfyui/custom_nodes || true && \
-    grep -R "get_ckpt" -n /comfyui/custom_nodes || true && \
-    grep -R "rife" -n /comfyui/custom_nodes/comfyui-frame-interpolation || true && \
-    echo "============================================================="
