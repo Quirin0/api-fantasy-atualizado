@@ -67,11 +67,25 @@ RUN git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolatio
 #     wget -c -O /comfyui/models/upscale_models/rife49.pth \
 #     "https://huggingface.co/hfmaster/models-moved/resolve/main/rife/rife49.pth?download=true"
 
-# Debug final (veja nos Build Logs)
-RUN echo "================ DEBUG: CUSTOM NODES INSTALADOS ================" && \
+# Cria pastas padrão (se não existirem)
+RUN mkdir -p /comfyui/models /comfyui/custom_nodes
+
+# Symlink SOMENTE para models (já que você tem tudo no volume)
+RUN ln -sfn /runpod-volume/models /comfyui/models && \
+    # Opcionais para subpastas comuns dentro de models
+    ln -sfn /runpod-volume/models/checkpoints /comfyui/models/checkpoints 2>/dev/null || true && \
+    ln -sfn /runpod-volume/models/clip_vision /comfyui/models/clip_vision 2>/dev/null || true && \
+    ln -sfn /runpod-volume/models/upscale_models /comfyui/models/upscale_models 2>/dev/null || true && \
+    ln -sfn /runpod-volume/models/loras /comfyui/models/loras 2>/dev/null || true
+
+# Debug (mantenha para verificar)
+RUN echo "================ DEBUG: VERIFICAÇÃO DO VOLUME E SYMLINKS ================" && \
+    ls -la /runpod-volume || echo "ERRO: /runpod-volume NÃO MONTADO ou vazio!" && \
+    ls -la /runpod-volume/models || echo "ERRO: /runpod-volume/models não existe!" && \
+    ls -la /comfyui/models || echo "ERRO: symlink para models falhou" && \
+    find /runpod-volume/models -name "*wan2.2*.safetensors" || echo "WAN checkpoint não encontrado no volume" && \
+    find /runpod-volume/models -name "*CLIP-ViT-H*.safetensors" || echo "CLIP Vision não encontrado" && \
+    find /runpod-volume/models -name "rife49.pth" || echo "RIFE não encontrado" && \
+    echo "================ DEBUG: CUSTOM NODES (clonados no build) ================" && \
     ls -la /comfyui/custom_nodes && \
-    echo "================ DEBUG: MODELS (se baixados) ==================" && \
-    ls -la /comfyui/models/checkpoints 2>/dev/null || echo "No checkpoints" && \
-    ls -la /comfyui/models/clip_vision 2>/dev/null || echo "No clip_vision" && \
-    ls -la /comfyui/models/upscale_models 2>/dev/null || echo "No upscale_models" && \
     echo "================================================================"
