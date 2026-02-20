@@ -78,6 +78,11 @@ RUN ln -sfn /runpod-volume/models /comfyui/models && \
     ln -sfn /runpod-volume/models/upscale_models /comfyui/models/upscale_models 2>/dev/null || true && \
     ln -sfn /runpod-volume/models/loras /comfyui/models/loras 2>/dev/null || true
 
+RUN mkdir -p /comfyui/models/upscale_models && \
+    wget -c -O /comfyui/models/upscale_models/rife49.pth \
+    "https://huggingface.co/hfmaster/models-moved/resolve/main/rife/rife49.pth?download=true" || \
+    wget -c -O /comfyui/models/upscale_models/rife49.pth \
+    "https://huggingface.co/Isi99999/Frame_Interpolation_Models/resolve/main/rife49.pth?download=true"
 # Debug (mantenha para verificar)
 RUN echo "================ DEBUG: VERIFICAÇÃO DO VOLUME E SYMLINKS ================" && \
     ls -la /runpod-volume || echo "ERRO: /runpod-volume NÃO MONTADO ou vazio!" && \
