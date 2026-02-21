@@ -66,6 +66,16 @@ RUN ln -sfn /runpod-volume/models /comfyui/models && \
     ln -sfn /runpod-volume/models/upscale_models /comfyui/models/upscale_models 2>/dev/null || true && \
     ln -sfn /runpod-volume/models/loras /comfyui/models/loras 2>/dev/null || true
 
+
+RUN pip install --no-cache-dir boto3
+
+# Copia handler custom
+COPY handler.py /handler.py
+
+# Define como entrypoint
+CMD ["python", "-u", "/handler.py"]
+
+
 # Debug para confirmar no Build Logs
 RUN echo "================ DEBUG: VERIFICAÇÃO DO RIFE49.PTH ================" && \
     ls -la /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/vfi_models/rife || echo "Pasta rife não encontrada!" && \
