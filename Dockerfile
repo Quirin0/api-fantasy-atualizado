@@ -1,4 +1,4 @@
-# Use base recente (atualize se possível; 5.5.1 pode ter bugs)
+ # Use base recente (atualize se possível; 5.5.1 pode ter bugs)
 FROM runpod/worker-comfyui:5.5.1-base
 
 # Atualiza e instala ferramentas básicas
