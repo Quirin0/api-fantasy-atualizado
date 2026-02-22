@@ -47,6 +47,10 @@ RUN git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolatio
     cd ComfyUI-Frame-Interpolation && \
     python install.py && \
     cd ..
+# Symlink só o modelo do storage (assume que no storage tem ckpts/rife/rife49.pth)
+RUN mkdir -p /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife && \
+    ln -sfn /runpod-volume/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife49.pth \
+            /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife49.pth || echo "Symlink do rife ok ou já existe"
 
 # === BAIXA O RIFE49.PTH NA PASTA EXATA QUE O NODE ESPERA ===
 # Cria a estrutura de pastas se não existir (por segurança)
@@ -67,23 +71,49 @@ RUN ln -sfn /runpod-volume/models /comfyui/models && \
     ln -sfn /runpod-volume/models/loras /comfyui/models/loras 2>/dev/null || true
 
 
-RUN pip install --no-cache-dir boto3
+# Instala dependências extras (mova para cima para melhor cache)
+RUN pip install --no-cache-dir boto3 requests websockets
 
 # Copia handler custom
 COPY handler.py /handler.py
 
-# Define como entrypoint
-CMD ["python", "-u", "/handler.py"]
+# Cria o startup script (com polling de 90s para cold starts mais longos)
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+echo "Iniciando ComfyUI em background..."\n\
+python /comfyui/main.py --listen 127.0.0.1 --port 8188 --enable-cors-header "*" &\n\
+\n\
+echo "Aguardando ComfyUI iniciar (até 90s)..."\n\
+for i in {1..90}; do\n\
+  if curl -s -f http://127.0.0.1:8188/ > /dev/null; then\n\
+    echo "ComfyUI pronto! (porta 8188 respondendo)"\n\
+    break\n\
+  fi\n\
+  sleep 1\n\
+done\n\
+\n\
+if ! curl -s -f http://127.0.0.1:8188/ > /dev/null; then\n\
+  echo "AVISO: ComfyUI não iniciou em 90s - verifique logs para erros no boot"\n\
+fi\n\
+\n\
+exec python -u /handler.py\n' > /start.sh && \
+    chmod +x /start.sh
 
+# CMD final: roda o startup script
+CMD ["/start.sh"]
 
-# Debug para confirmar no Build Logs
-RUN echo "================ DEBUG: VERIFICAÇÃO DO RIFE49.PTH ================" && \
-    ls -la /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/vfi_models/rife || echo "Pasta rife não encontrada!" && \
+# Ajuste o download do rife49.pth para o caminho correto (ckpts/rife)
+RUN mkdir -p /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife && \
+    wget -c -O /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife49.pth \
+    "https://huggingface.co/hfmaster/models-moved/resolve/main/rife/rife49.pth?download=true" || \
+    wget -c -O /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife49.pth \
+    "https://huggingface.co/Isi99999/Frame_Interpolation_Models/resolve/main/rife49.pth?download=true"
+
+# Seus debugs (remova os ls /runpod-volume se incomodar, pois falham no build)
+RUN echo "================ DEBUG: VERIFICAÇÃO DO RIFE49.PTH (agora em ckpts) ================" && \
+    ls -la /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife || echo "Pasta ckpts/rife não encontrada!" && \
     find /comfyui/custom_nodes -name "rife49.pth" -exec ls -lh {} \; || echo "rife49.pth NÃO FOI BAIXADO!" && \
-    echo "================ DEBUG: VOLUME E SYMLINKS ================" && \
-    ls -la /runpod-volume || echo "ERRO: /runpod-volume NÃO MONTADO ou vazio!" && \
-    ls -la /runpod-volume/models || echo "ERRO: /runpod-volume/models não existe!" && \
-    ls -la /comfyui/models || echo "ERRO: symlink para models falhou" && \
-    echo "================ DEBUG: CUSTOM NODES (clonados no build) ================" && \
+    echo "================ DEBUG: CUSTOM NODES ================" && \
     ls -la /comfyui/custom_nodes && \
     echo "================================================================"
