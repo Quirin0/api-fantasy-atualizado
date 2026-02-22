@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # WORKDIR para custom_nodes
 WORKDIR /comfyui/custom_nodes
 
-# Clones dos nodes (mantém o Frame-Interpolation com case correto)
+# Clones dos nodes (agrupados)
 RUN git clone --depth 1 https://github.com/rgthree/rgthree-comfy.git && \
     cd rgthree-comfy && pip install --no-cache-dir -r requirements.txt && cd .. && \
     git clone --depth 1 https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && \
@@ -24,29 +24,27 @@ RUN git clone --depth 1 https://github.com/rgthree/rgthree-comfy.git && \
     git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
     cd ComfyUI-Frame-Interpolation && python install.py && cd ..
 
-# Symlink do rife49.pth do storage para o caminho correto (ckpts/rife – oficial do repo)
+# Symlink do rife49.pth do storage (caminho correto: ckpts/rife)
+# mkdir -p garante a pasta existe no container antes do symlink
 RUN mkdir -p /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife && \
     ln -sfn /runpod-volume/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife49.pth \
-            /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife49.pth || echo "Symlink rife ok ou já existe"
+            /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife49.pth || echo "Symlink rife49.pth ok ou já existe"
 
-# Instala dependências extras (boto3 pro seu handler)
+# Instala dependências extras pro handler
 RUN pip install --no-cache-dir boto3 requests websockets
 
-# Copia seu handler custom
+# Copia handler custom
 COPY handler.py /handler.py
 
-# Força symlink do handler se a base image usar /rp-start (fallback seguro)
+# Fallback symlink para /rp-start (se a base image usar isso pro handler)
 RUN ln -sf /handler.py /rp-start/handler.py 2>/dev/null || true
 
-# NÃO adicione CMD novo – use o da base image (/start.sh que inicia ComfyUI + handler)
-# Se precisar override, teste: CMD ["/start.sh"]
-
-# Debugs (úteis nos build logs)
+# Debugs nos build logs
 RUN echo "================ DEBUG: VERIFICAÇÃO RIFE49.PTH ================" && \
-    ls -la /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife || echo "ckpts/rife não encontrada!" && \
-    find /comfyui/custom_nodes -name "*rife49.pth*" -exec ls -lh {} \; || echo "rife49.pth não encontrado!" && \
+    ls -la /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife 2>/dev/null || echo "ckpts/rife não encontrada (normal com symlink runtime)" && \
+    find /comfyui/custom_nodes -name "*rife49.pth*" -exec ls -lh {} \; 2>/dev/null || echo "rife49.pth não encontrado no build" && \
     echo "================ DEBUG: CUSTOM NODES ================" && \
     ls -la /comfyui/custom_nodes && \
-    echo "================ DEBUG: PATHS COMFYUI ================" && \
-    ls -la /comfyui || echo "/comfyui não encontrada!" && \
+    echo "================ DEBUG: COMFYUI PATHS ================" && \
+    ls -la /comfyui 2>/dev/null || echo "/comfyui não encontrada!" && \
     echo "================================================================"
