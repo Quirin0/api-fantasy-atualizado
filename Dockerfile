@@ -23,7 +23,9 @@ RUN git clone --depth 1 https://github.com/rgthree/rgthree-comfy.git && \
     git clone --depth 1 https://github.com/Smirnov75/ComfyUI-mxToolkit.git && \
     git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
     cd ComfyUI-Frame-Interpolation && python install.py && cd ..
-
+RUN git clone --depth 1 https://github.com/city96/ComfyUI-LoadImageFromURL.git && \
+    cd ComfyUI-LoadImageFromURL && pip install --no-cache-dir -r requirements.txt && cd ..
+    
 # Symlink do rife49.pth do storage (caminho correto: ckpts/rife)
 # mkdir -p garante a pasta existe no container antes do symlink
 RUN mkdir -p /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife && \
@@ -39,8 +41,7 @@ COPY handler.py /handler.py
 # Fallback symlink para /rp-start (se a base image usar isso pro handler)
 RUN ln -sf /handler.py /rp-start/handler.py 2>/dev/null || true
 
-RUN mkdir -p /comfyui/input && \
-    ln -sfn /runpod-volume/input/test-image.webp /comfyui/input/test-image.webp || echo "Symlink imagem teste ok"
+
 # Debugs nos build logs
 RUN echo "================ DEBUG: VERIFICAÇÃO RIFE49.PTH ================" && \
     ls -la /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife 2>/dev/null || echo "ckpts/rife não encontrada (normal com symlink runtime)" && \
