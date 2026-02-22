@@ -23,8 +23,13 @@ RUN git clone --depth 1 https://github.com/rgthree/rgthree-comfy.git && \
     git clone --depth 1 https://github.com/Smirnov75/ComfyUI-mxToolkit.git && \
     git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
     cd ComfyUI-Frame-Interpolation && python install.py && cd ..
-RUN git clone --depth 1 https://github.com/city96/ComfyUI-LoadImageFromURL.git && \
-    cd ComfyUI-LoadImageFromURL && pip install --no-cache-dir -r requirements.txt && cd ..
+# ... (seus clones atuais)
+
+# Node para Load Image from URL (tsogzark)
+RUN git clone --depth 1 https://github.com/tsogzark/ComfyUI-load-image-from-url.git && \
+    cd ComfyUI-load-image-from-url && \
+    # Não precisa pip install -r (não tem requirements.txt)
+    cd ..
     
 # Symlink do rife49.pth do storage (caminho correto: ckpts/rife)
 # mkdir -p garante a pasta existe no container antes do symlink
