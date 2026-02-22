@@ -38,12 +38,10 @@ def handler(job):
     input_data = job["input"]
     print("Input recebido do job:", input_data)
 
-    # Ajuste chave: usa "workflow" se existir, senão assume que o input já é o prompt
     workflow = input_data.get("workflow", input_data)
-    payload = {"prompt": workflow}  # Formato obrigatório: {"prompt": {nodes...}}
+    payload = {"prompt": workflow}
     print("Payload ajustado enviado para /prompt:", payload)
 
-    # Espera ComfyUI pronto (aumentado para cold starts)
     max_wait = 120
     wait_interval = 3
     waited = 0
@@ -54,7 +52,6 @@ def handler(job):
     if not is_comfy_ready():
         return {"status": "error", "message": "ComfyUI not ready after timeout."}
 
-    # Envia workflow
     try:
         response = requests.post(COMFY_URL, json=payload, timeout=60)
         response.raise_for_status()
@@ -91,22 +88,48 @@ def handler(job):
     if history is None:
         return {"status": "error", "message": "Timeout waiting for workflow."}
 
-    # Extrai vídeo do node 17
+    # Debug completo do node 17
     outputs = history.get("outputs", {})
-    if "17" not in outputs or "videos" not in outputs["17"]:
-        return {"status": "error", "message": "No video in node 17 outputs."}
+    node17 = outputs.get("17", {})
+    print("Outputs do node 17:", node17)
 
-    video_info = outputs["17"]["videos"][0]
-    filename = video_info["filename"]
-    subfolder = video_info.get("subfolder", "")
-    file_path = os.path.join("/comfyui/output", subfolder, filename)
+    # Extração flexível do filename do vídeo
+    video_filename = None
+    subfolder = ""
+
+    # 1. Formato preferido: "videos"
+    if "videos" in node17 and node17["videos"]:
+        video_info = node17["videos"][0]
+        video_filename = video_info["filename"]
+        subfolder = video_info.get("subfolder", "")
+        print("Vídeo encontrado em 'videos':", video_filename)
+
+    # 2. Formato alternativo: "filenames"
+    elif "filenames" in node17 and node17["filenames"]:
+        video_filename = node17["filenames"][0]
+        print("Vídeo encontrado em 'filenames':", video_filename)
+
+    # 3. Fallback: procura no disco pelo filename_prefix (do seu workflow)
+    else:
+        prefix = "mamada_20260221132525"  # pegue do workflow se possível; fixe para teste
+        output_dir = "/comfyui/output"
+        for file in os.listdir(output_dir):
+            if file.startswith(prefix) and file.lower().endswith((".mp4", ".webm", ".gif", ".mov")):
+                video_filename = file
+                print("Vídeo encontrado por prefixo no disco:", video_filename)
+                break
+
+    if not video_filename:
+        return {"status": "error", "message": "No video filename found in node 17 or on disk. Veja logs para outputs do node 17."}
+
+    file_path = os.path.join("/comfyui/output", subfolder, video_filename)
 
     if not os.path.exists(file_path):
-        return {"status": "error", "message": f"File not found: {file_path}"}
+        return {"status": "error", "message": f"File not found on disk: {file_path}"}
 
-    # Upload B2
+    # Upload para Backblaze B2
     try:
-        s3_key = f"comfy-videos/{filename}"
+        s3_key = f"comfy-videos/{video_filename}"
         with open(file_path, "rb") as f:
             s3_client.upload_fileobj(f, B2_BUCKET, s3_key)
 
@@ -120,7 +143,7 @@ def handler(job):
 
         return {
             "status": "success",
-            "filename": filename,
+            "filename": video_filename,
             "download_url": presigned_url,
             "expires_in_seconds": 3600
         }
