@@ -10,13 +10,12 @@ from requests.exceptions import ConnectionError, RequestException, HTTPError
 COMFY_URL = "http://127.0.0.1:8188/prompt"
 COMFY_HISTORY_URL = "http://127.0.0.1:8188/history"
 
-# Configurações do Backblaze B2 (via ENV vars no RunPod)
+# Configurações do Backblaze B2
 B2_KEY_ID = os.environ.get('B2_KEY_ID')
 B2_APP_KEY = os.environ.get('B2_APP_KEY')
 B2_BUCKET = os.environ.get('B2_BUCKET')
 B2_ENDPOINT = os.environ.get('B2_ENDPOINT')
 
-# Cliente S3 para Backblaze B2
 s3_client = boto3.client(
     's3',
     endpoint_url=B2_ENDPOINT,
@@ -26,7 +25,6 @@ s3_client = boto3.client(
 )
 
 def is_comfy_ready():
-    """Checa se ComfyUI está respondendo"""
     try:
         response = requests.get(COMFY_URL, timeout=5)
         return response.status_code == 200
@@ -34,19 +32,18 @@ def is_comfy_ready():
         return False
 
 def handler(job):
-    # Verifica credenciais B2
     if not all([B2_KEY_ID, B2_APP_KEY, B2_BUCKET, B2_ENDPOINT]):
         return {"status": "error", "message": "Backblaze B2 credentials not set."}
 
     input_data = job["input"]
     print("Input recebido do job:", input_data)
 
-    # Ajusta o payload para o formato esperado pelo ComfyUI (/prompt)
-    # Muitos usuários enviam { "workflow": {...} }, então ajustamos aqui
-    payload = {"prompt": input_data.get("workflow", input_data)}
+    # Ajuste chave: usa "workflow" se existir, senão assume que o input já é o prompt
+    workflow = input_data.get("workflow", input_data)
+    payload = {"prompt": workflow}  # Formato obrigatório: {"prompt": {nodes...}}
     print("Payload ajustado enviado para /prompt:", payload)
 
-    # Espera ComfyUI estar pronto (aumentei um pouco o timeout para cold starts)
+    # Espera ComfyUI pronto (aumentado para cold starts)
     max_wait = 120
     wait_interval = 3
     waited = 0
@@ -57,7 +54,7 @@ def handler(job):
     if not is_comfy_ready():
         return {"status": "error", "message": "ComfyUI not ready after timeout."}
 
-    # Envia o workflow
+    # Envia workflow
     try:
         response = requests.post(COMFY_URL, json=payload, timeout=60)
         response.raise_for_status()
@@ -67,16 +64,16 @@ def handler(job):
         if not prompt_id:
             return {"status": "error", "message": "No prompt_id in response"}
     except HTTPError as http_err:
-        error_msg = f"HTTP {response.status_code}: {response.text}"
-        print("Erro HTTP ao submeter workflow:", error_msg)
-        return {"status": "error", "message": f"Failed to submit workflow: {error_msg}"}
+        error_detail = response.text if 'response' in locals() else str(http_err)
+        print("HTTP Error ao submeter workflow:", response.status_code, error_detail)
+        return {"status": "error", "message": f"Failed to submit workflow: {response.status_code} - {error_detail}"}
     except RequestException as e:
-        print("Erro na requisição:", str(e))
+        print("Request Exception:", str(e))
         return {"status": "error", "message": f"Failed to submit workflow: {str(e)}"}
 
-    # Polling para esperar o workflow terminar
+    # Polling history
     history = None
-    max_attempts = 600  # ~10 min
+    max_attempts = 600
     attempt = 0
     while history is None and attempt < max_attempts:
         try:
@@ -85,7 +82,7 @@ def handler(job):
             h = r.json()
             if prompt_id in h:
                 history = h[prompt_id]
-                print("Workflow concluído. History:", history)
+                print("Workflow concluído. History keys:", list(history.keys()))
         except RequestException:
             pass
         time.sleep(1)
@@ -94,10 +91,10 @@ def handler(job):
     if history is None:
         return {"status": "error", "message": "Timeout waiting for workflow."}
 
-    # Extrai o vídeo do node 17 (VHS_VideoCombine)
+    # Extrai vídeo do node 17
     outputs = history.get("outputs", {})
     if "17" not in outputs or "videos" not in outputs["17"]:
-        return {"status": "error", "message": "No video found in node 17 outputs."}
+        return {"status": "error", "message": "No video in node 17 outputs."}
 
     video_info = outputs["17"]["videos"][0]
     filename = video_info["filename"]
@@ -107,7 +104,7 @@ def handler(job):
     if not os.path.exists(file_path):
         return {"status": "error", "message": f"File not found: {file_path}"}
 
-    # Upload para Backblaze B2
+    # Upload B2
     try:
         s3_key = f"comfy-videos/{filename}"
         with open(file_path, "rb") as f:
@@ -119,7 +116,7 @@ def handler(job):
             ExpiresIn=3600
         )
 
-        print("Upload concluído. URL gerada:", presigned_url)
+        print("Upload OK. URL:", presigned_url)
 
         return {
             "status": "success",
@@ -128,7 +125,7 @@ def handler(job):
             "expires_in_seconds": 3600
         }
     except Exception as e:
-        print("Erro no upload:", str(e))
+        print("Upload error:", str(e))
         return {"status": "error", "message": f"Upload failed: {str(e)}"}
 
 runpod.serverless.start({"handler": handler})
