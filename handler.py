@@ -125,21 +125,25 @@ def handler(job):
         video_filename = node_output["filenames"][0]
         print(f"Vídeo encontrado em 'filenames' do node {video_node_id}: {video_filename}")
 
-    # 3. Fallback: procura no disco usando o filename_prefix extraído
+        # 3. Fallback: procura no disco usando o filename_prefix extraído
     else:
         output_dir = "/comfyui/output"
         found_file = None
         for file in os.listdir(output_dir):
-            if file.startswith(filename_prefix) and file.lower().endswith((".mp4", ".webm", ".gif", ".mov")):
+            # Procura se o arquivo contém o prefixo (mais flexível)
+            if filename_prefix in file and file.lower().endswith((".mp4", ".webm", ".gif", ".mov", ".avi")):
                 found_file = file
-                print(f"Vídeo encontrado por prefixo no disco ({filename_prefix}): {found_file}")
+                print(f"Vídeo encontrado por prefixo contido no disco ({filename_prefix}): {found_file}")
                 break
 
         if found_file:
             video_filename = found_file
         else:
-            return {"status": "error", "message": f"Nenhum arquivo de vídeo encontrado no disco com prefixo '{filename_prefix}'."}
-
+            # Debug extra: lista todos os arquivos em /output para ver o que existe
+            all_files = os.listdir(output_dir)
+            print(f"Arquivos disponíveis em /comfyui/output: {all_files}")
+            return {"status": "error", "message": f"Nenhum arquivo de vídeo encontrado no disco contendo '{filename_prefix}'. Veja lista de arquivos nos logs."}
+            
     if not video_filename:
         return {"status": "error", "message": f"Nenhum filename de vídeo encontrado para o node {video_node_id}."}
 
