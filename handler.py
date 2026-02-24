@@ -88,44 +88,65 @@ def handler(job):
     if history is None:
         return {"status": "error", "message": "Timeout waiting for workflow."}
 
-    # Debug completo do node 17
+    # Procura dinamicamente o node que gera o vídeo (VHS_VideoCombine)
     outputs = history.get("outputs", {})
-    node17 = outputs.get("17", {})
-    print("Outputs do node 17:", node17)
+    video_node_id = None
+    video_info = None
+    filename_prefix = None
 
-    # Extração flexível do filename do vídeo
+    # Lista de class_types que geram vídeo final (adicione mais se precisar)
+    video_class_types = ["VHS_VideoCombine", "SaveAnimatedWEBP", "SaveVideo"]
+
+    for node_id, node_data in workflow.items():
+        if node_data.get("class_type") in video_class_types:
+            video_node_id = node_id
+            filename_prefix = node_data.get("inputs", {}).get("filename_prefix", "output_")
+            print(f"Node de vídeo encontrado: {node_id} ({node_data['class_type']}), prefix: {filename_prefix}")
+            break
+
+    if not video_node_id:
+        return {"status": "error", "message": "Nenhum node de vídeo (ex: VHS_VideoCombine) encontrado no workflow."}
+
+    node_output = outputs.get(video_node_id, {})
+    print(f"Outputs do node {video_node_id}:", node_output)
+
     video_filename = None
     subfolder = ""
 
     # 1. Formato preferido: "videos"
-    if "videos" in node17 and node17["videos"]:
-        video_info = node17["videos"][0]
+    if "videos" in node_output and node_output["videos"]:
+        video_info = node_output["videos"][0]
         video_filename = video_info["filename"]
         subfolder = video_info.get("subfolder", "")
-        print("Vídeo encontrado em 'videos':", video_filename)
+        print(f"Vídeo encontrado em 'videos' do node {video_node_id}: {video_filename}")
 
     # 2. Formato alternativo: "filenames"
-    elif "filenames" in node17 and node17["filenames"]:
-        video_filename = node17["filenames"][0]
-        print("Vídeo encontrado em 'filenames':", video_filename)
+    elif "filenames" in node_output and node_output["filenames"]:
+        video_filename = node_output["filenames"][0]
+        print(f"Vídeo encontrado em 'filenames' do node {video_node_id}: {video_filename}")
 
-    # 3. Fallback: procura no disco pelo filename_prefix (do seu workflow)
+    # 3. Fallback: procura no disco usando o filename_prefix extraído
     else:
-        prefix = "mamada_20260221132525"  # pegue do workflow se possível; fixe para teste
         output_dir = "/comfyui/output"
+        found_file = None
         for file in os.listdir(output_dir):
-            if file.startswith(prefix) and file.lower().endswith((".mp4", ".webm", ".gif", ".mov")):
-                video_filename = file
-                print("Vídeo encontrado por prefixo no disco:", video_filename)
+            if file.startswith(filename_prefix) and file.lower().endswith((".mp4", ".webm", ".gif", ".mov")):
+                found_file = file
+                print(f"Vídeo encontrado por prefixo no disco ({filename_prefix}): {found_file}")
                 break
 
+        if found_file:
+            video_filename = found_file
+        else:
+            return {"status": "error", "message": f"Nenhum arquivo de vídeo encontrado no disco com prefixo '{filename_prefix}'."}
+
     if not video_filename:
-        return {"status": "error", "message": "No video filename found in node 17 or on disk. Veja logs para outputs do node 17."}
+        return {"status": "error", "message": f"Nenhum filename de vídeo encontrado para o node {video_node_id}."}
 
     file_path = os.path.join("/comfyui/output", subfolder, video_filename)
 
     if not os.path.exists(file_path):
-        return {"status": "error", "message": f"File not found on disk: {file_path}"}
+        return {"status": "error", "message": f"Arquivo não encontrado no disco: {file_path}"}
 
     # Upload para Backblaze B2
     try:
