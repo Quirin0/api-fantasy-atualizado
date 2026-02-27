@@ -88,13 +88,12 @@ def handler(job):
     if history is None:
         return {"status": "error", "message": "Timeout waiting for workflow."}
 
-    # Procura dinamicamente o node que gera o vídeo (VHS_VideoCombine)
+    # Procura dinamicamente o node de vídeo
     outputs = history.get("outputs", {})
     video_node_id = None
     video_info = None
     filename_prefix = None
 
-    # Lista de class_types que geram vídeo final (adicione mais se precisar)
     video_class_types = ["VHS_VideoCombine", "SaveAnimatedWEBP", "SaveVideo"]
 
     for node_id, node_data in workflow.items():
@@ -105,7 +104,7 @@ def handler(job):
             break
 
     if not video_node_id:
-        return {"status": "error", "message": "Nenhum node de vídeo (ex: VHS_VideoCombine) encontrado no workflow."}
+        return {"status": "error", "message": "Nenhum node de vídeo encontrado no workflow."}
 
     node_output = outputs.get(video_node_id, {})
     print(f"Outputs do node {video_node_id}:", node_output)
@@ -113,24 +112,18 @@ def handler(job):
     video_filename = None
     subfolder = ""
 
-    # 1. Formato preferido: "videos"
     if "videos" in node_output and node_output["videos"]:
         video_info = node_output["videos"][0]
         video_filename = video_info["filename"]
         subfolder = video_info.get("subfolder", "")
         print(f"Vídeo encontrado em 'videos' do node {video_node_id}: {video_filename}")
-
-    # 2. Formato alternativo: "filenames"
     elif "filenames" in node_output and node_output["filenames"]:
         video_filename = node_output["filenames"][0]
         print(f"Vídeo encontrado em 'filenames' do node {video_node_id}: {video_filename}")
-
-        # 3. Fallback: procura no disco usando o filename_prefix extraído
     else:
         output_dir = "/comfyui/output"
         found_file = None
         for file in os.listdir(output_dir):
-            # Procura se o arquivo contém o prefixo (mais flexível)
             if filename_prefix in file and file.lower().endswith((".mp4", ".webm", ".gif", ".mov", ".avi")):
                 found_file = file
                 print(f"Vídeo encontrado por prefixo contido no disco ({filename_prefix}): {found_file}")
@@ -139,11 +132,10 @@ def handler(job):
         if found_file:
             video_filename = found_file
         else:
-            # Debug extra: lista todos os arquivos em /output para ver o que existe
             all_files = os.listdir(output_dir)
             print(f"Arquivos disponíveis em /comfyui/output: {all_files}")
-            return {"status": "error", "message": f"Nenhum arquivo de vídeo encontrado no disco contendo '{filename_prefix}'. Veja lista de arquivos nos logs."}
-            
+            return {"status": "error", "message": f"Nenhum arquivo de vídeo encontrado no disco contendo '{filename_prefix}'. Veja lista nos logs."}
+
     if not video_filename:
         return {"status": "error", "message": f"Nenhum filename de vídeo encontrado para o node {video_node_id}."}
 
@@ -158,19 +150,17 @@ def handler(job):
         with open(file_path, "rb") as f:
             s3_client.upload_fileobj(f, B2_BUCKET, s3_key)
 
-        presigned_url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': B2_BUCKET, 'Key': s3_key},
-            ExpiresIn=3600
-        )
+        # Link público direto (bucket deve estar public-read)
+        public_url = f"{B2_ENDPOINT.rstrip('/')}/{B2_BUCKET}/{s3_key}"
 
-        print("Upload OK. URL:", presigned_url)
+        print("Upload OK. Link público permanente:", public_url)
 
         return {
             "status": "success",
             "filename": video_filename,
-            "download_url": presigned_url,
-            "expires_in_seconds": 3600
+            "download_url": public_url,
+            "expires_in_seconds": None,  # permanente
+            "note": "Link direto (bucket public-read)"
         }
     except Exception as e:
         print("Upload error:", str(e))
